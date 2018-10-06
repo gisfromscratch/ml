@@ -90,6 +90,7 @@ namespace SentimentAnalysis
 
         static IEnumerable<Open311Data> OpenFile(string path, int expectedTokenCount, int codeIndex, int textIndex)
         {
+            var standardizer = new StopwordsStandardizer(@"german_stopwords_full.txt");
             var serviceTypes = new Open311ServiceTypes();
             var unknownTypes = new HashSet<string>();
             using (var reader = new StreamReader(path))
@@ -111,7 +112,8 @@ namespace SentimentAnalysis
                             if (serviceTypes.IsKnownServiceType(code))
                             {
                                 record.Code = code;
-                                record.Text = tokens[textIndex];
+                                var userRequest = tokens[textIndex];
+                                record.Text = standardizer.Standardize(userRequest);
                                 yield return record;
                             }
                             else
