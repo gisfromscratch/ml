@@ -168,15 +168,38 @@ namespace SentimentAnalysis
             {
                 new Open311Data
                 {
+                    Code = 9,
                     Text = @"Seit einigen Wochen steht dort ein abgemeldetes Fahrzeug (ehemals DHL) mit Kurzzeitkennzeichen (Mai 2015)"
                 },
                 new Open311Data
                 {
+                    Code = 2,
                     Text = @"Glassplitter am Straßenrand"
                 },
                 new Open311Data
                 {
+                    Code = 22,
                     Text = @"Ich habe bereits 2x telefonisch mitgeteilt, dass der Kanaldeckel in der Straßenmitte klappert, erstmals vor zwei Monaten, zuletzt vor drei Wochen. Der Deckel ist mit einem Kreuz markiert worden, sonst ist nichts passiert. Der Deckel verursacht viel Lärm, besonders störend in der Nacht. Der Deckel gefährdet zusätzlich die Verkehrssicherheit!"
+                },
+                new Open311Data
+                {
+                    Code = 26,
+                    Text = @"wo auch der Grünabfall-Container oft bereit steht"
+                },
+                new Open311Data
+                {
+                    Code = 2,
+                    Text = @"Grüne Schule wurde leider mutwillig beschädigt. Pflastersteine sind gelockert und werden immer wieder durch die Gegend geworfen. Je länger man nun wartet die Pflasterlücke zu schließen, desto aufwändiger wird es. Im Moment sollte es aber innerhalb von einer halben Stunde zu reparieren sein."
+                },
+                new Open311Data
+                {
+                    Code = 2,
+                    Text = @"Am Spielplatz auf der Wiese an einem  Baum in der Nähe der Kleinkinderschaukel / gegenüber der Sprunggrube"
+                },
+                new Open311Data
+                {
+                    Code = 8,
+                    Text = @"Bei uns ist schon wieder die Straßenlaterne defekt!"
                 }
             };
 
@@ -190,9 +213,12 @@ namespace SentimentAnalysis
             foreach (var item in sentimentsAndPredictions)
             {
                 var text = item.sentiment.Text;
+                var code = item.sentiment.Code;
                 var serviceType = item.prediction.ServiceType;
                 var serviceName = serviceTypes.IsKnownServiceType(serviceType) ? serviceTypes.GetNameFromServiceType(serviceType) : @"Unknown";
-                Console.WriteLine($"Sentiment: {text} | Prediction: {serviceType} - {serviceName}");
+                Console.WriteLine($"Sentiment: {text}");
+                Console.WriteLine($"Code: {code}\tPrediction: {serviceType} - {serviceName}");
+                Console.WriteLine();
             }
             Console.WriteLine();
         }
