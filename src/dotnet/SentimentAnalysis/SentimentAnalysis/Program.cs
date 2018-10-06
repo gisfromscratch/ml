@@ -91,6 +91,7 @@ namespace SentimentAnalysis
         static IEnumerable<Open311Data> OpenFile(string path, int expectedTokenCount, int codeIndex, int textIndex)
         {
             var standardizer = new StopwordsStandardizer(@"german_stopwords_full.txt");
+            //var standardizer = new SynonymStandardizer();
             var serviceTypes = new Open311ServiceTypes();
             var unknownTypes = new HashSet<string>();
             using (var reader = new StreamReader(path))
@@ -113,7 +114,8 @@ namespace SentimentAnalysis
                             {
                                 record.Code = code;
                                 var userRequest = tokens[textIndex];
-                                record.Text = standardizer.Standardize(userRequest);
+                                var text = standardizer.Standardize(userRequest);
+                                record.Text = text;
                                 yield return record;
                             }
                             else
@@ -204,6 +206,13 @@ namespace SentimentAnalysis
                     Text = @"Bei uns ist schon wieder die Straßenlaterne defekt!"
                 }
             };
+
+            // Standardize
+            var standardizer = new StopwordsStandardizer(@"german_stopwords_full.txt");
+            foreach (var sentiment in sentiments)
+            {
+                sentiment.Text = standardizer.Standardize(sentiment.Text);
+            }
 
             IEnumerable<Open311DataPrediction> predictions = model.Predict(sentiments);
             Console.WriteLine();

@@ -43,7 +43,7 @@ namespace SentimentAnalysis.Model
 
         internal string Standardize(string text)
         {
-            var tokens = text.Split(new []{' ', ',', ';', '-', '/', '(', ')', '%'});
+            var tokens = text.Split(new[] { ' ', ',', ';', '-', '/', '(', ')', '%', '.', '?', '!' });
             foreach (var token in tokens)
             {
                 if (Stopwords.Contains(token))
