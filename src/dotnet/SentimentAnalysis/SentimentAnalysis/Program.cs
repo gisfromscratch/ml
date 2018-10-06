@@ -88,9 +88,9 @@ namespace SentimentAnalysis
             Console.WriteLine();
         }
 
-        static void TrainOpen311()
+        static IEnumerable<Open311Data> OpenFile(string path, int expectedTokenCount, int codeIndex, int textIndex)
         {
-            using (var reader = new StreamReader(@"D:\OpenData.Bonn\open311-requests.tsv"))
+            using (var reader = new StreamReader(path))
             {
                 var header = reader.ReadLine();
                 string line;
@@ -99,23 +99,90 @@ namespace SentimentAnalysis
                 {
                     var tokens = line.Split(Delimiter);
                     var tokenCount = tokens.Length;
-                    for(var tokenIndex = 0; tokenIndex < tokenCount; tokenIndex++)
+                    if (expectedTokenCount == tokenCount)
                     {
-                        var token = tokens[tokenIndex];
+                        var record = new Open311Data();
+                        var serviceType = tokens[codeIndex];
+                        if (float.TryParse(serviceType, out float code))
+                        {
+                            record.Code = code;
+                            record.Text = tokens[textIndex];
+                            yield return record;
+                        }
                     }
                 }
             }
-            /*
-             * Train using in-memory data
-            CollectionDataSource.Create<Open311Data>();
-            */
+        }
+
+        static async Task<PredictionModel<Open311Data, Open311DataPrediction>> TrainOpen311(string dataPath)
+        {
+            var pipeline = new LearningPipeline();
+            var dataSource = CollectionDataSource.Create(OpenFile(dataPath, 3, 0, 1));
+            pipeline.Add(dataSource);
+            pipeline.Add(new Dictionarizer(@"Label"));
+            pipeline.Add(new TextFeaturizer(@"Features", @"Request"));
+            pipeline.Add(new StochasticDualCoordinateAscentClassifier());
+            pipeline.Add(new PredictedLabelColumnOriginalValueConverter { PredictedLabelColumn = @"PredictedLabel" });
+
+            var model = pipeline.Train<Open311Data, Open311DataPrediction>();
+            await model.WriteAsync(_modelPath);
+            return model;
+        }
+
+        static void EvaluateOpen311(PredictionModel<Open311Data, Open311DataPrediction> model, string testDataPath)
+        {
+            var testData = CollectionDataSource.Create(OpenFile(testDataPath, 3, 0, 1));
+            var evaluator = new ClassificationEvaluator();
+            var metrics = evaluator.Evaluate(model, testData);
+            Console.WriteLine();
+            Console.WriteLine("PredictionModel quality metrics evaluation");
+            Console.WriteLine("------------------------------------------");
+            Console.WriteLine($"Accuracy Macro: {metrics.AccuracyMacro:P2}");
+            Console.WriteLine($"Accuracy Micro: {metrics.AccuracyMicro:P2}");
+            Console.WriteLine($"Top KAccuracy: {metrics.TopKAccuracy:P2}");
+            Console.WriteLine($"LogLoss: {metrics.LogLoss:P2}");
+            for (var classIndex = 0; classIndex < metrics.PerClassLogLoss.Length; classIndex++)
+            {
+                Console.WriteLine($"Class: {classIndex} - {metrics.PerClassLogLoss[classIndex]:P2}");
+            }
+        }
+
+        static void PredictOpen311(PredictionModel<Open311Data, Open311DataPrediction> model)
+        {
+            IEnumerable<Open311Data> sentiments = new[]
+            {
+                new Open311Data
+                {
+                    Text = @"Grünüberwuchs Verkehrsraum"
+                },
+                new Open311Data
+                {
+                    Text = @"Laterne defekt"
+                }
+            };
+
+            IEnumerable<Open311DataPrediction> predictions = model.Predict(sentiments);
+            Console.WriteLine();
+            Console.WriteLine("Open311 Predictions");
+            Console.WriteLine("-------------------");
+
+            var sentimentsAndPredictions = sentiments.Zip(predictions, (sentiment, prediction) => (sentiment, prediction));
+            foreach (var item in sentimentsAndPredictions)
+            {
+                Console.WriteLine($"Sentiment: {item.sentiment.Text} | Prediction: {item.prediction.ServiceType}");
+            }
+            Console.WriteLine();
         }
 
         static async Task Main(string[] args)
         {
-            var model = await Train();
-            Evaluate(model);
-            Predict(model);
+            //var model = await Train();
+            //Evaluate(model);
+            //Predict(model);
+
+            var model = await TrainOpen311(@"D:\OpenData.Bonn\open311-ml-requests.tsv");
+            EvaluateOpen311(model, @"D:\OpenData.Bonn\open311-ml-requests-evaluate.tsv");
+            PredictOpen311(model);
         }
     }
 }

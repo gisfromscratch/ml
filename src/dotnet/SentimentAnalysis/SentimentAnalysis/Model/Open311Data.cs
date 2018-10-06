@@ -22,10 +22,10 @@ namespace SentimentAnalysis.Model
     /// </summary>
     class Open311Data
     {
-        [Column(ordinal: @"0", name: @"Type")]
-        public float ServiceType { get; set; }
-
+        [Column(ordinal: @"0", name: @"Label")]
+        public float Code { get; set; }
+        
         [Column(ordinal: @"1", name: @"Request")]
-        public string UserRequest { get; set; }
+        public string Text { get; set; }
     }
 }

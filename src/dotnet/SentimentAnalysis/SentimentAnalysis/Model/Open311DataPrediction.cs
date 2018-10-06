@@ -23,7 +23,7 @@ namespace SentimentAnalysis.Model
     /// </summary>
     class Open311DataPrediction
     {
-        [ColumnName(@"Predicted Service Type")]
+        [ColumnName(@"PredictedLabel")]
         public float ServiceType { get; set; }
     }
 }
