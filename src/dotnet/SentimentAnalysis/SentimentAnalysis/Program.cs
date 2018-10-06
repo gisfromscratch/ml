@@ -21,6 +21,7 @@ using Microsoft.ML.Transforms;
 using SentimentAnalysis.Model;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -85,6 +86,29 @@ namespace SentimentAnalysis
                 Console.WriteLine($"Sentiment: {item.sentiment.SentimentText} | Prediction: {(item.prediction.Sentiment ? "Positive" : "Negative")}");
             }
             Console.WriteLine();
+        }
+
+        static void TrainOpen311()
+        {
+            using (var reader = new StreamReader(@"D:\OpenData.Bonn\open311-requests.tsv"))
+            {
+                var header = reader.ReadLine();
+                string line;
+                const char Delimiter = '\t';
+                while (null != (line = reader.ReadLine()))
+                {
+                    var tokens = line.Split(Delimiter);
+                    var tokenCount = tokens.Length;
+                    for(var tokenIndex = 0; tokenIndex < tokenCount; tokenIndex++)
+                    {
+                        var token = tokens[tokenIndex];
+                    }
+                }
+            }
+            /*
+             * Train using in-memory data
+            CollectionDataSource.Create<Open311Data>();
+            */
         }
 
         static async Task Main(string[] args)
