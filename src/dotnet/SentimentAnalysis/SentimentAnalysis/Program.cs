@@ -90,6 +90,8 @@ namespace SentimentAnalysis
 
         static IEnumerable<Open311Data> OpenFile(string path, int expectedTokenCount, int codeIndex, int textIndex)
         {
+            var serviceTypes = new Open311ServiceTypes();
+            var unknownTypes = new HashSet<string>();
             using (var reader = new StreamReader(path))
             {
                 var header = reader.ReadLine();
@@ -105,19 +107,32 @@ namespace SentimentAnalysis
                         var serviceType = tokens[codeIndex];
                         if (float.TryParse(serviceType, out float code))
                         {
-                            record.Code = code;
-                            record.Text = tokens[textIndex];
-                            yield return record;
+                            // Validate the service type
+                            if (serviceTypes.IsKnownServiceType(code))
+                            {
+                                record.Code = code;
+                                record.Text = tokens[textIndex];
+                                yield return record;
+                            }
+                            else
+                            {
+                                unknownTypes.Add(serviceType);
+                            }
                         }
                     }
                 }
+            }
+
+            if (0 < unknownTypes.Count)
+            {
+                Console.WriteLine($"{unknownTypes.Count} unknown service types!");
             }
         }
 
         static async Task<PredictionModel<Open311Data, Open311DataPrediction>> TrainOpen311(string dataPath)
         {
             var pipeline = new LearningPipeline();
-            var dataSource = CollectionDataSource.Create(OpenFile(dataPath, 3, 0, 1));
+            var dataSource = CollectionDataSource.Create(OpenFile(dataPath, 3, 0, 2));
             pipeline.Add(dataSource);
             pipeline.Add(new Dictionarizer(@"Label"));
             pipeline.Add(new TextFeaturizer(@"Features", @"Request"));
@@ -131,7 +146,7 @@ namespace SentimentAnalysis
 
         static void EvaluateOpen311(PredictionModel<Open311Data, Open311DataPrediction> model, string testDataPath)
         {
-            var testData = CollectionDataSource.Create(OpenFile(testDataPath, 3, 0, 1));
+            var testData = CollectionDataSource.Create(OpenFile(testDataPath, 3, 0, 2));
             var evaluator = new ClassificationEvaluator();
             var metrics = evaluator.Evaluate(model, testData);
             Console.WriteLine();
@@ -153,11 +168,15 @@ namespace SentimentAnalysis
             {
                 new Open311Data
                 {
-                    Text = @"Grünüberwuchs Verkehrsraum"
+                    Text = @"Seit einigen Wochen steht dort ein abgemeldetes Fahrzeug (ehemals DHL) mit Kurzzeitkennzeichen (Mai 2015)"
                 },
                 new Open311Data
                 {
-                    Text = @"Laterne defekt"
+                    Text = @"Glassplitter am Straßenrand"
+                },
+                new Open311Data
+                {
+                    Text = @"Ich habe bereits 2x telefonisch mitgeteilt, dass der Kanaldeckel in der Straßenmitte klappert, erstmals vor zwei Monaten, zuletzt vor drei Wochen. Der Deckel ist mit einem Kreuz markiert worden, sonst ist nichts passiert. Der Deckel verursacht viel Lärm, besonders störend in der Nacht. Der Deckel gefährdet zusätzlich die Verkehrssicherheit!"
                 }
             };
 
@@ -166,10 +185,14 @@ namespace SentimentAnalysis
             Console.WriteLine("Open311 Predictions");
             Console.WriteLine("-------------------");
 
+            var serviceTypes = new Open311ServiceTypes();
             var sentimentsAndPredictions = sentiments.Zip(predictions, (sentiment, prediction) => (sentiment, prediction));
             foreach (var item in sentimentsAndPredictions)
             {
-                Console.WriteLine($"Sentiment: {item.sentiment.Text} | Prediction: {item.prediction.ServiceType}");
+                var text = item.sentiment.Text;
+                var serviceType = item.prediction.ServiceType;
+                var serviceName = serviceTypes.IsKnownServiceType(serviceType) ? serviceTypes.GetNameFromServiceType(serviceType) : @"Unknown";
+                Console.WriteLine($"Sentiment: {text} | Prediction: {serviceType} - {serviceName}");
             }
             Console.WriteLine();
         }
