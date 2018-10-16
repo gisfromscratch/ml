@@ -119,7 +119,6 @@ namespace SentimentAnalysis
                         }
 
                         var record = new Open311Data();
-                        lastRecord = record;
                         var serviceType = tokens[codeIndex];
                         if (float.TryParse(serviceType, out float code))
                         {
@@ -132,6 +131,9 @@ namespace SentimentAnalysis
                                 var text = userRequest;
                                 //var text = standardizer.Standardize(userRequest);
                                 record.Text = text;
+
+                                // Set the current record
+                                lastRecord = record;
                             }
                             else
                             {
@@ -151,7 +153,7 @@ namespace SentimentAnalysis
             if (null != lastRecord)
             {
                 lastRecord = CleanOpen311(lastRecord);
-                if (!string.IsNullOrEmpty(lastRecord.Text) 
+                if (!string.IsNullOrEmpty(lastRecord.Text)
                     && !string.IsNullOrEmpty(lastRecord.Name))
                 {
                     yield return lastRecord;
@@ -390,6 +392,8 @@ namespace SentimentAnalysis
         {
             const string trainingSet = @"open311-train.txt";
 
+            var classes = new HashSet<string>();
+            var classesWithIndex = new Dictionary<int, string>();
             using (var writer = new StreamWriter(trainingSet))
             {
                 foreach (var open311 in OpenFile(dataPath, 3, 0, 1, 2))
@@ -398,6 +402,62 @@ namespace SentimentAnalysis
                     writer.Write('\t');
                     writer.Write(open311.Name);
                     writer.WriteLine();
+
+                    // Set the classes
+                    if (classes.Add(open311.Name))
+                    {
+                        classesWithIndex.Add(classes.Count - 1, open311.Name);
+                    }
+                }
+            }
+
+            var pipeline = new LearningPipeline();
+            pipeline.Add(new TextLoader(trainingSet).CreateFrom<NewsData>());
+            pipeline.Add(new TextFeaturizer("Features", "Text")
+            {
+                KeepDiacritics = false,
+                KeepPunctuations = false,
+                TextCase = TextNormalizerTransformCaseNormalizationMode.Lower,
+                OutputTokens = true,
+                Language = TextTransformLanguage.German,
+                StopWordsRemover = new PredefinedStopWordsRemover(),
+                VectorNormalizer = TextTransformTextNormKind.L2,
+                CharFeatureExtractor = new NGramNgramExtractor() { NgramLength = 3, AllLengths = false },
+                WordFeatureExtractor = new NGramNgramExtractor() { NgramLength = 3, AllLengths = true }
+            });
+            pipeline.Add(new Dictionarizer("Label"));
+            pipeline.Add(new StochasticDualCoordinateAscentClassifier());
+            var model = pipeline.Train<NewsData, NewsPrediction>();
+
+            var testData = new TextLoader(trainingSet).CreateFrom<NewsData>();
+            var evaluator = new ClassificationEvaluator();
+            var metrics = evaluator.Evaluate(model, testData);
+
+            Console.WriteLine();
+            Console.WriteLine("PredictionModel quality metrics evaluation");
+            Console.WriteLine("------------------------------------------");
+            Console.WriteLine($"AccuracyMacro: {metrics.AccuracyMacro:P2}");
+            Console.WriteLine($"AccuracyMicro: {metrics.AccuracyMicro:P2}");
+            Console.WriteLine($"LogLoss: {metrics.LogLoss:P2}");
+
+            while (true)
+            {
+                Console.WriteLine();
+                Console.WriteLine("Input text: ");
+                var text = Console.ReadLine();
+
+                if (text == "Exit")
+                {
+                    return;
+                }
+
+                var prediction = model.Predict(new NewsData { Text = text });
+
+                var serviceTypes = new Open311ServiceTypes();
+                Console.WriteLine("Prediction result:");
+                for (var index = 0; index < prediction.Score.Count(); index++)
+                {
+                    Console.WriteLine($"{prediction.Score[index]:P2}\t{classesWithIndex[index]}");
                 }
             }
         }
