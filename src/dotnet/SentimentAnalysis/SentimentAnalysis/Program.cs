@@ -89,12 +89,13 @@ namespace SentimentAnalysis
             Console.WriteLine();
         }
 
-        static IEnumerable<Open311Data> OpenFile(string path, int expectedTokenCount, int codeIndex, int textIndex)
+        static IEnumerable<Open311Data> OpenFile(string path, int expectedTokenCount, int codeIndex, int nameIndex, int textIndex)
         {
             //var standardizer = new StopwordsStandardizer(@"german_stopwords_full.txt");
             //var standardizer = new SynonymStandardizer();
             var serviceTypes = new Open311ServiceTypes();
             var unknownTypes = new HashSet<string>();
+            Open311Data lastRecord = null;
             using (var reader = new StreamReader(path))
             {
                 var header = reader.ReadLine();
@@ -106,7 +107,19 @@ namespace SentimentAnalysis
                     var tokenCount = tokens.Length;
                     if (expectedTokenCount == tokenCount)
                     {
+                        // Return the last record
+                        if (null != lastRecord)
+                        {
+                            lastRecord = CleanOpen311(lastRecord);
+                            if (!string.IsNullOrEmpty(lastRecord.Text)
+                                && !string.IsNullOrEmpty(lastRecord.Name))
+                            {
+                                yield return lastRecord;
+                            }
+                        }
+
                         var record = new Open311Data();
+                        lastRecord = record;
                         var serviceType = tokens[codeIndex];
                         if (float.TryParse(serviceType, out float code))
                         {
@@ -114,11 +127,11 @@ namespace SentimentAnalysis
                             if (serviceTypes.IsKnownServiceType(code))
                             {
                                 record.Code = code;
+                                record.Name = tokens[nameIndex];
                                 var userRequest = tokens[textIndex];
                                 var text = userRequest;
                                 //var text = standardizer.Standardize(userRequest);
                                 record.Text = text;
-                                yield return record;
                             }
                             else
                             {
@@ -126,6 +139,22 @@ namespace SentimentAnalysis
                             }
                         }
                     }
+                    else if (null != lastRecord)
+                    {
+                        // Append the whole line to the last record
+                        lastRecord.Text += line;
+                    }
+                }
+            }
+
+            // Return the last record
+            if (null != lastRecord)
+            {
+                lastRecord = CleanOpen311(lastRecord);
+                if (!string.IsNullOrEmpty(lastRecord.Text) 
+                    && !string.IsNullOrEmpty(lastRecord.Name))
+                {
+                    yield return lastRecord;
                 }
             }
 
@@ -135,10 +164,27 @@ namespace SentimentAnalysis
             }
         }
 
+        static Open311Data CleanOpen311(Open311Data record)
+        {
+            if (string.IsNullOrEmpty(record.Text))
+            {
+                return record;
+            }
+
+            var text = record.Text;
+            text = text.Replace(Environment.NewLine, " ");
+            text = text.Replace("\n", " ");
+            text = text.Replace("\r", " ");
+            text = text.Replace("   ", " ");
+            text = text.Replace("\"", string.Empty);
+            record.Text = text;
+            return record;
+        }
+
         static async Task<PredictionModel<Open311Data, Open311DataPrediction>> TrainOpen311(string dataPath)
         {
             var pipeline = new LearningPipeline();
-            var dataSource = CollectionDataSource.Create(OpenFile(dataPath, 3, 0, 2));
+            var dataSource = CollectionDataSource.Create(OpenFile(dataPath, 3, 0, 1, 2));
             pipeline.Add(dataSource);
             pipeline.Add(new Dictionarizer(@"Label"));
             pipeline.Add(new TextFeaturizer(@"Features", @"Request")
@@ -163,7 +209,7 @@ namespace SentimentAnalysis
 
         static void EvaluateOpen311(PredictionModel<Open311Data, Open311DataPrediction> model, string testDataPath)
         {
-            var testData = CollectionDataSource.Create(OpenFile(testDataPath, 3, 0, 2));
+            var testData = CollectionDataSource.Create(OpenFile(testDataPath, 3, 0, 1, 2));
             var evaluator = new ClassificationEvaluator();
             var metrics = evaluator.Evaluate(model, testData);
             Console.WriteLine();
@@ -340,6 +386,22 @@ namespace SentimentAnalysis
             Console.WriteLine($"LogLoss: {metrics.LogLoss:P2}");
         }
 
+        static void Open311UsingNewsClassification(string dataPath)
+        {
+            const string trainingSet = @"open311-train.txt";
+
+            using (var writer = new StreamWriter(trainingSet))
+            {
+                foreach (var open311 in OpenFile(dataPath, 3, 0, 1, 2))
+                {
+                    writer.Write(open311.Text);
+                    writer.Write('\t');
+                    writer.Write(open311.Name);
+                    writer.WriteLine();
+                }
+            }
+        }
+
 
 
         static async Task Main(string[] args)
@@ -351,10 +413,11 @@ namespace SentimentAnalysis
             //var model = await TrainOpen311(@"D:\OpenData.Bonn\open311-ml-requests.tsv");
             //EvaluateOpen311(model, @"D:\OpenData.Bonn\open311-ml-requests-evaluate.tsv");
             //PredictOpen311(model);
+            Open311UsingNewsClassification(@"D:\OpenData.Bonn\open311-ml-requests.tsv");
 
-            PrepareNewsData();
-            var model = TrainNews();
-            EvaluateNews(model);
+            //PrepareNewsData();
+            //var model = TrainNews();
+            //EvaluateNews(model);
         }
     }
 }

@@ -25,7 +25,7 @@ namespace SentimentAnalysis.Model
         [Column(ordinal: @"0", name: @"Label")]
         public float Code { get; set; }
 
-        //[Column(ordinal: @"1", name: @"Name")]
+        //[Column(ordinal: @"0", name: @"Name")]
         public string Name { get; set; }
 
         [Column(ordinal: @"1", name: @"Request")]
