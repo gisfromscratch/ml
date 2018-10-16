@@ -16,6 +16,7 @@
 using Microsoft.ML;
 using Microsoft.ML.Data;
 using Microsoft.ML.Models;
+using Microsoft.ML.Runtime;
 using Microsoft.ML.Trainers;
 using Microsoft.ML.Transforms;
 using SentimentAnalysis.Model;
@@ -90,7 +91,7 @@ namespace SentimentAnalysis
 
         static IEnumerable<Open311Data> OpenFile(string path, int expectedTokenCount, int codeIndex, int textIndex)
         {
-            var standardizer = new StopwordsStandardizer(@"german_stopwords_full.txt");
+            //var standardizer = new StopwordsStandardizer(@"german_stopwords_full.txt");
             //var standardizer = new SynonymStandardizer();
             var serviceTypes = new Open311ServiceTypes();
             var unknownTypes = new HashSet<string>();
@@ -114,7 +115,8 @@ namespace SentimentAnalysis
                             {
                                 record.Code = code;
                                 var userRequest = tokens[textIndex];
-                                var text = standardizer.Standardize(userRequest);
+                                var text = userRequest;
+                                //var text = standardizer.Standardize(userRequest);
                                 record.Text = text;
                                 yield return record;
                             }
@@ -139,7 +141,18 @@ namespace SentimentAnalysis
             var dataSource = CollectionDataSource.Create(OpenFile(dataPath, 3, 0, 2));
             pipeline.Add(dataSource);
             pipeline.Add(new Dictionarizer(@"Label"));
-            pipeline.Add(new TextFeaturizer(@"Features", @"Request"));
+            pipeline.Add(new TextFeaturizer(@"Features", @"Request")
+            {
+                KeepDiacritics = false,
+                KeepPunctuations = false,
+                TextCase = TextNormalizerTransformCaseNormalizationMode.Lower,
+                OutputTokens = true,
+                Language = TextTransformLanguage.German,
+                StopWordsRemover = new PredefinedStopWordsRemover(),
+                VectorNormalizer = TextTransformTextNormKind.L2,
+                CharFeatureExtractor = new NGramNgramExtractor() { NgramLength = 3, AllLengths = false },
+                WordFeatureExtractor = new NGramNgramExtractor() { NgramLength = 3, AllLengths = true }
+            });
             pipeline.Add(new StochasticDualCoordinateAscentClassifier());
             pipeline.Add(new PredictedLabelColumnOriginalValueConverter { PredictedLabelColumn = @"PredictedLabel" });
 
@@ -208,11 +221,11 @@ namespace SentimentAnalysis
             };
 
             // Standardize
-            var standardizer = new StopwordsStandardizer(@"german_stopwords_full.txt");
-            foreach (var sentiment in sentiments)
-            {
-                sentiment.Text = standardizer.Standardize(sentiment.Text);
-            }
+            //var standardizer = new StopwordsStandardizer(@"german_stopwords_full.txt");
+            //foreach (var sentiment in sentiments)
+            //{
+            //    sentiment.Text = standardizer.Standardize(sentiment.Text);
+            //}
 
             IEnumerable<Open311DataPrediction> predictions = model.Predict(sentiments);
             Console.WriteLine();
@@ -234,15 +247,114 @@ namespace SentimentAnalysis
             Console.WriteLine();
         }
 
+        static void PrepareNewsData()
+        {
+            const string testSet = @"news-test.txt";
+            const string trainingSet = @"news-train.txt";
+
+            var categories = new List<string> { "business", "entertainment", "politics", "sport", "tech" };
+
+            Random _random = new Random();
+
+            File.Delete(trainingSet);
+            File.Delete(testSet);
+
+            var basePath = @"D:/BBC/";
+
+            var training = new List<NewsData>();
+            var test = new List<NewsData>();
+
+            for (var i = 0; i < categories.Count(); i++)
+            {
+                var category = categories[i];
+                var path = basePath + category + "/";
+                var files = Directory.GetFiles(path);
+
+                var texts = new List<string>();
+                foreach (var file in files)
+                {
+                    var text = File.ReadAllText(file);
+
+                    var textParts = text.Split("\n").ToList();
+                    textParts.RemoveAll(s => string.IsNullOrEmpty(s));
+                    text = textParts[0] + " " + textParts[1];
+
+                    text = text.Replace(Environment.NewLine, " ");
+                    text = text.Replace("\n", " ");
+                    text = text.Replace("\r", " ");
+                    text = text.Replace("   ", " ");
+
+                    texts.Add(text);
+                }
+
+                texts = texts.OrderBy(s => _random.Next()).ToList();
+
+                var trainingTextsCount = (texts.Count / 100) * 80;
+                var trainingTexts = texts.GetRange(0, trainingTextsCount);
+                training.AddRange(trainingTexts.Select(s => new NewsData { Text = s, Label = category }).ToList());
+
+                var testTexts = texts.GetRange(trainingTextsCount, texts.Count - trainingTextsCount);
+                test.AddRange(testTexts.Select(s => new NewsData { Text = s, Label = category }).ToList());
+            }
+
+            File.AppendAllLines(testSet, test.Select(s => $"{s.Text}\t{s.Label}"));
+            File.AppendAllLines(trainingSet, training.Select(s => $"{s.Text}\t{s.Label}"));
+        }
+
+        static PredictionModel<NewsData, NewsPrediction> TrainNews()
+        {
+            const string trainingSet = @"news-train.txt";
+
+            var pipeline = new LearningPipeline();
+            pipeline.Add(new TextLoader(trainingSet).CreateFrom<NewsData>());
+            pipeline.Add(new TextFeaturizer("Features", "Text")
+            {
+                KeepDiacritics = false,
+                KeepPunctuations = false,
+                TextCase = TextNormalizerTransformCaseNormalizationMode.Lower,
+                OutputTokens = true,
+                Language = TextTransformLanguage.English,
+                StopWordsRemover = new PredefinedStopWordsRemover(),
+                VectorNormalizer = TextTransformTextNormKind.L2,
+                CharFeatureExtractor = new NGramNgramExtractor() { NgramLength = 3, AllLengths = false },
+                WordFeatureExtractor = new NGramNgramExtractor() { NgramLength = 3, AllLengths = true }
+            });
+            pipeline.Add(new Dictionarizer("Label"));
+            pipeline.Add(new StochasticDualCoordinateAscentClassifier());
+            return pipeline.Train<NewsData, NewsPrediction>();
+        }
+
+        static void EvaluateNews(PredictionModel<NewsData, NewsPrediction> model)
+        {
+            const string trainingSet = @"news-train.txt";
+
+            var testData = new TextLoader(trainingSet).CreateFrom<NewsData>();
+            var evaluator = new ClassificationEvaluator();
+            var metrics = evaluator.Evaluate(model, testData);
+
+            Console.WriteLine();
+            Console.WriteLine("PredictionModel quality metrics evaluation");
+            Console.WriteLine("------------------------------------------");
+            Console.WriteLine($"AccuracyMacro: {metrics.AccuracyMacro:P2}");
+            Console.WriteLine($"AccuracyMicro: {metrics.AccuracyMicro:P2}");
+            Console.WriteLine($"LogLoss: {metrics.LogLoss:P2}");
+        }
+
+
+
         static async Task Main(string[] args)
         {
             //var model = await Train();
             //Evaluate(model);
             //Predict(model);
 
-            var model = await TrainOpen311(@"D:\OpenData.Bonn\open311-ml-requests.tsv");
-            EvaluateOpen311(model, @"D:\OpenData.Bonn\open311-ml-requests-evaluate.tsv");
-            PredictOpen311(model);
+            //var model = await TrainOpen311(@"D:\OpenData.Bonn\open311-ml-requests.tsv");
+            //EvaluateOpen311(model, @"D:\OpenData.Bonn\open311-ml-requests-evaluate.tsv");
+            //PredictOpen311(model);
+
+            PrepareNewsData();
+            var model = TrainNews();
+            EvaluateNews(model);
         }
     }
 }

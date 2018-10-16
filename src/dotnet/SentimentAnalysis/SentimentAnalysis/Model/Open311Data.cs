@@ -28,7 +28,7 @@ namespace SentimentAnalysis.Model
         //[Column(ordinal: @"1", name: @"Name")]
         public string Name { get; set; }
 
-        [Column(ordinal: @"2", name: @"Request")]
+        [Column(ordinal: @"1", name: @"Request")]
         public string Text { get; set; }
     }
 }
